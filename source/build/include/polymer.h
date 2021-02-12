@@ -46,6 +46,7 @@ extern float        pr_specularpower;
 extern float        pr_specularfactor;
 extern int32_t      pr_highpalookups;
 extern int32_t      pr_artmapping;
+extern int32_t      pr_skymapping;
 extern int32_t      pr_overridehud;
 extern float        pr_hudxadd;
 extern float        pr_hudyadd;
@@ -68,6 +69,7 @@ typedef enum {
                     PR_BIT_ANIM_INTERPOLATION,
                     PR_BIT_LIGHTING_PASS,
                     PR_BIT_NORMAL_MAP,
+                    PR_BIT_SKY_MAP,
                     PR_BIT_ART_MAP,
                     PR_BIT_DIFFUSE_MAP,
                     PR_BIT_DIFFUSE_DETAIL_MAP,
@@ -96,6 +98,9 @@ typedef struct      s_prmaterial {
     GLuint          normalmap;
     GLfloat         normalbias[2];
     GLfloat*        tbn;
+    // PR_BIT_SKY_MAP
+    GLuint          skymap[PSKYOFF_MAX];
+    GLint           skymapcount;
     // PR_BIT_ART_MAP
     GLuint          artmap;
     GLuint          basepalmap;
@@ -137,6 +142,10 @@ typedef struct      s_prrograminfo {
     GLint           uniform_eyePosition;
     GLint           uniform_normalMap;
     GLint           uniform_normalBias;
+    // PR_BIT_SKY_MAP
+    GLuint          uniform_skyMap[16];
+    GLuint          uniform_skyMapCount;
+    GLuint          uniform_skyPanning;
     // PR_BIT_ART_MAP
     GLuint          uniform_artMap;
     GLuint          uniform_basePalMap;
@@ -438,7 +447,7 @@ static void         polymer_drawmdsprite(tspriteptr_t tspr);
 static void         polymer_loadmodelvbos(md3model_t* m);
 // MATERIALS
 static void         polymer_getscratchmaterial(_prmaterial* material);
-static _prbucket*   polymer_getbuildmaterial(_prmaterial* material, int16_t tilenum, char pal, int8_t shade, int8_t vis, int32_t cmeth);
+static _prbucket*   polymer_getbuildmaterial(_prmaterial* material, int16_t tilenum, char pal, int8_t shade, int8_t vis, int32_t cmeth, int16_t skytile = -1);
 static int32_t      polymer_bindmaterial(const _prmaterial *material, const int16_t* lights, int lightcount);
 static void         polymer_unbindmaterial(int32_t programbits);
 static void         polymer_compileprogram(int32_t programbits);

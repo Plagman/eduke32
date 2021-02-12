@@ -36,6 +36,7 @@ float           pr_specularpower = 15.0f;
 float           pr_specularfactor = 1.0f;
 int32_t         pr_highpalookups = 1;
 int32_t         pr_artmapping = 1;
+int32_t         pr_skymapping = 1;
 int32_t         pr_overridehud = 0;
 float           pr_hudxadd = 0.0f;
 float           pr_hudyadd = 0.0f;
@@ -220,13 +221,13 @@ static const _prprogrambit   prprogrambits[PR_BIT_COUNT] = {
     {
         1 << PR_BIT_HEADER,
         // vert_def
-        "#version 120\n"
+        "#version 400\n"
         "#extension GL_ARB_texture_rectangle : enable\n"
         "\n",
         // vert_prog
         "",
         // frag_def
-        "#version 120\n"
+        "#version 400\n"
         "#extension GL_ARB_texture_rectangle : enable\n"
         "\n",
         // frag_prog
@@ -308,6 +309,24 @@ static const _prprogrambit   prprogrambits[PR_BIT_COUNT] = {
         "\n",
     },
     {
+        1 << PR_BIT_SKY_MAP,
+        // vert_def
+        "",
+        // vert_prog
+        "",
+        // frag_def
+        "uniform sampler2D skyMap[16];\n"
+        "uniform int skyMapCount;\n"
+        "uniform vec4 skyPanning;\n"
+        "\n",
+        // frag_prog
+        "  isSkyMap = 1;\n"
+        "  vec2 skyMapCoord = gl_FragCoord.xy * vec2( 1.0, -1.0 ) / (vec2(textureSize(skyMap[0], 0)) * 4.0) + skyPanning.zw;\n"
+        "  int skyMapIndex = int(mod(skyMapCoord.x, 16.0));\n"
+        "  skyMapSample = texture2D(skyMap[skyMapIndex], skyMapCoord);\n"
+        "\n",
+    },
+    {
         1 << PR_BIT_ART_MAP,
         // vert_def
         "varying vec3 horizDistance;\n"
@@ -329,7 +348,12 @@ static const _prprogrambit   prprogrambits[PR_BIT_COUNT] = {
         "  float shadeLookup = length(horizDistance) / 1.024 * visibility;\n"
         "  shadeLookup = shadeLookup + shadeOffset;\n"
         "\n"
-        "  float colorIndex = texture2D(artMap, commonTexCoord.st).r * 256.0;\n"
+        "  float colorIndex;\n"
+        "  if (isSkyMap == 1) {\n"
+        "    colorIndex = skyMapSample.r * 256.0;\n"
+        "  } else {\n"
+        "    colorIndex = texture2D(artMap, commonTexCoord.st).r * 256.0;\n"
+        "  }\n"
         "  float colorIndexNear = texture2DRect(lookupMap, vec2(colorIndex, floor(shadeLookup))).r;\n"
         "  float colorIndexFar = texture2DRect(lookupMap, vec2(colorIndex, floor(shadeLookup + 1.0))).r;\n"
         "  float colorIndexFullbright = texture2DRect(lookupMap, vec2(colorIndex, 0.0)).r;\n"
@@ -358,7 +382,11 @@ static const _prprogrambit   prprogrambits[PR_BIT_COUNT] = {
         "uniform sampler2D diffuseMap;\n"
         "\n",
         // frag_prog
-        "  diffuseTexel = texture2D(diffuseMap, commonTexCoord.st);\n"
+        "  if (isSkyMap == 1) {\n"
+        "    diffuseTexel = skyMapSample;\n"
+        "  } else {\n"
+        "    diffuseTexel = texture2D(diffuseMap, commonTexCoord.st);\n"
+        "  }\n"
         "\n",
     },
     {
@@ -684,6 +712,9 @@ static const _prprogrambit   prprogrambits[PR_BIT_COUNT] = {
         "  float shadowResult = 1.0;\n"
         "  vec2 specularMaterial = vec2(15.0, 1.0);\n"
         "  vec3 lightTexel = vec3(1.0, 1.0, 1.0);\n"
+        "  int isSkyMap = 0;\n"
+        "  vec4 skyMapSample;\n"
+        "\n"
         "\n",
         // frag_prog
         "  gl_FragColor = result;\n"
@@ -2610,6 +2641,7 @@ static int32_t      polymer_updatesector(int16_t sectnum)
     int16_t         curstat, curpicnum, floorpicnum, ceilingpicnum;
     char            curxpanning, curypanning;
     _prvert*        curbuffer;
+    int16_t         curskytile;
 
     if (pr_nullrender >= 3) return 0;
 
@@ -2828,7 +2860,14 @@ attributes:
             !Bmemcmp(&s->ceilingstat, &sec->ceilingstat, offsetof(sectortype, visibility) - offsetof(sectortype, ceilingstat)))
         goto finish;
 
-    s->floor.bucket = polymer_getbuildmaterial(&s->floor.material, floorpicnum, sec->floorpal, sec->floorshade, sec->visibility, (sec->floorstat & 384) ? DAMETH_MASK : DAMETH_NOMASK);
+
+    curskytile = -1;
+    if (sec->floorstat & 1)
+    {
+        curskytile = floorpicnum;
+    }
+
+    s->floor.bucket = polymer_getbuildmaterial(&s->floor.material, floorpicnum, sec->floorpal, sec->floorshade, sec->visibility, (sec->floorstat & 384) ? DAMETH_MASK : DAMETH_NOMASK, curskytile);
 
     if (sec->floorstat & 256) {
         if (sec->floorstat & 128) {
@@ -2838,7 +2877,13 @@ attributes:
         }
     }
 
-    s->ceil.bucket = polymer_getbuildmaterial(&s->ceil.material, ceilingpicnum, sec->ceilingpal, sec->ceilingshade, sec->visibility, (sec->ceilingstat & 384) ? DAMETH_MASK : DAMETH_NOMASK);
+    curskytile = -1;
+    if (sec->ceilingstat & 1)
+    {
+        curskytile = ceilingpicnum;
+    }
+
+    s->ceil.bucket = polymer_getbuildmaterial(&s->ceil.material, ceilingpicnum, sec->ceilingpal, sec->ceilingshade, sec->visibility, (sec->ceilingstat & 384) ? DAMETH_MASK : DAMETH_NOMASK, curskytile);
 
     if (sec->ceilingstat & 256) {
         if (sec->ceilingstat & 128) {
@@ -3019,7 +3064,7 @@ static void         polymer_drawsector(int16_t sectnum, int32_t domasks)
         draw = FALSE;
     }
     // Parallaxed
-    if (sec->floorstat & 1) {
+    if (!pr_skymapping && sec->floorstat & 1) {
         draw = FALSE;
     }
 
@@ -3047,7 +3092,7 @@ static void         polymer_drawsector(int16_t sectnum, int32_t domasks)
         draw = FALSE;
     }
     // Parallaxed
-    if (sec->ceilingstat & 1) {
+    if (!pr_skymapping && sec->ceilingstat & 1) {
         draw = FALSE;
     }
 
@@ -3257,6 +3302,8 @@ static void         polymer_updatewall(int16_t wallnum)
     else
         xref = 0;
 
+    int16_t curskytile = -1;
+
     if ((unsigned)wal->nextsector >= (unsigned)numsectors || !ns)
     {
         Bmemcpy(w->wall.buffer, &s->floor.buffer[wallnum - sec->wallptr], sizeof(GLfloat) * 3);
@@ -3269,7 +3316,13 @@ static void         polymer_updatewall(int16_t wallnum)
         else
             curpicnum = walloverpicnum;
 
-        w->wall.bucket = polymer_getbuildmaterial(&w->wall.material, curpicnum, wal->pal, wal->shade, sec->visibility, DAMETH_WALL);
+        curskytile = -1;
+        if (sec->ceilingstat & 1 && nsec && nsec->ceilingstat & 1)
+        {
+            curskytile = sec->ceilingpicnum;
+        }
+
+        w->wall.bucket = polymer_getbuildmaterial(&w->wall.material, curpicnum, wal->pal, wal->shade, sec->visibility, DAMETH_WALL, curskytile);
 
         if (wal->cstat & 4)
             yref = sec->floorz;
@@ -3339,7 +3392,13 @@ static void         polymer_updatewall(int16_t wallnum)
             curxpanning = wall[refwall].xpanning;
             curypanning = wall[refwall].ypanning;
 
-            w->wall.bucket = polymer_getbuildmaterial(&w->wall.material, curpicnum, curpal, curshade, sec->visibility, DAMETH_WALL);
+            curskytile = -1;
+            if (sec->floorstat & 1 && ns && nsec->floorstat & 1)
+            {
+                curskytile = sec->floorpicnum;
+            }
+
+            w->wall.bucket = polymer_getbuildmaterial(&w->wall.material, curpicnum, curpal, curshade, sec->visibility, DAMETH_WALL, curskytile);
 
             if (!(wall[refwall].cstat&4))
                 yref = nsec->floorz;
@@ -3406,7 +3465,13 @@ static void         polymer_updatewall(int16_t wallnum)
             else
                 curpicnum = wallpicnum;
 
-            w->over.bucket = polymer_getbuildmaterial(&w->over.material, curpicnum, wal->pal, wal->shade, sec->visibility, DAMETH_WALL);
+            curskytile = -1;
+            if (sec->ceilingstat & 1 && nsec && nsec->ceilingstat & 1)
+            {
+                curskytile = sec->ceilingpicnum;
+            }
+
+            w->over.bucket = polymer_getbuildmaterial(&w->over.material, curpicnum, wal->pal, wal->shade, sec->visibility, DAMETH_WALL, curskytile);
 
             if (wal->cstat & 48)
             {
@@ -3582,13 +3647,16 @@ static void         polymer_drawwall(int16_t sectnum, int16_t wallnum)
     wal = &wall[wallnum];
     w = prwalls[wallnum];
 
-    if ((sec->floorstat & 1) && (wal->nextsector >= 0) &&
-        (sector[wal->nextsector].floorstat & 1))
-        parallaxedfloor = 1;
+    if (!pr_skymapping)
+    {
+        if ((sec->floorstat & 1) && (wal->nextsector >= 0) &&
+            (sector[wal->nextsector].floorstat & 1))
+            parallaxedfloor = 1;
 
-    if ((sec->ceilingstat & 1) && (wal->nextsector >= 0) &&
-        (sector[wal->nextsector].ceilingstat & 1))
-        parallaxedceiling = 1;
+        if ((sec->ceilingstat & 1) && (wal->nextsector >= 0) &&
+            (sector[wal->nextsector].ceilingstat & 1))
+            parallaxedceiling = 1;
+    }
 
     calc_and_apply_fog(fogshade(wal->shade, wal->pal), sec->visibility, get_floor_fogpal(sec));
 
@@ -4853,6 +4921,12 @@ static void         polymer_getscratchmaterial(_prmaterial* material)
     material->normalmap = 0;
     material->normalbias[0] = material->normalbias[1] = 0.0f;
     material->tbn = NULL;
+    // PR_BIT_SKY_MAP
+    for (int i = 0; i < PSKYOFF_MAX; i++)
+    {
+        material->skymap[i] = 0;
+    }
+    material->skymapcount = 0;
     // PR_BIT_ART_MAP
     material->artmap = 0;
     material->basepalmap = 0;
@@ -4959,7 +5033,7 @@ static void         polymer_setupartmap(int16_t tilenum, char pal)
     }
 }
 
-static _prbucket*   polymer_getbuildmaterial(_prmaterial* material, int16_t tilenum, char pal, int8_t shade, int8_t vis, int32_t cmeth)
+static _prbucket*   polymer_getbuildmaterial(_prmaterial* material, int16_t tilenum, char pal, int8_t shade, int8_t vis, int32_t cmeth, int16_t skytile/* = -1*/)
 {
     // find corresponding bucket; XXX key that with pr_buckets later, need to be tied to restartvid
     _prbucket *bucketptr = polymer_findbucket(tilenum, pal);
@@ -4981,6 +5055,34 @@ static _prbucket*   polymer_getbuildmaterial(_prmaterial* material, int16_t tile
             material->diffusescale[0] = pth->hicr->scale.x;
             material->diffusescale[1] = pth->hicr->scale.y;
         }
+    }
+
+    int32_t dapskybits = 0;
+    const int8_t *dapskyoff = nullptr;
+    int32_t numskytiles = 0;
+
+    if (pr_skymapping && skytile != -1)
+    {
+        pthtyp*         pth;
+
+        dapskyoff = getpsky(skytile, NULL, &dapskybits, NULL, NULL);
+        numskytiles = 1<<dapskybits;
+
+        for (int i = 0; i < numskytiles; i++)
+        {
+            int16_t picnum = skytile + dapskyoff[i];
+            // Prevent oob by bad user input:
+            if (picnum >= MAXTILES)
+                picnum = MAXTILES-1;
+
+            tileUpdatePicnum(&picnum, 0);
+            if (!waloff[picnum])
+                tileLoad(picnum);
+            pth = texcache_fetch(picnum, pal, 0, DAMETH_NOMASK);
+            material->skymap[i] = pth ? pth->glpic : 0;
+        }
+
+        material->skymapcount = numskytiles;
     }
 
     int32_t usinghighpal = 0;
@@ -5005,6 +5107,19 @@ static _prbucket*   polymer_getbuildmaterial(_prmaterial* material, int16_t tile
 
         if (!material->basepalmap || !material->lookupmap) {
             material->artmap = 0;
+        }
+
+        if (pr_skymapping && skytile != -1)
+        {
+            for (int i = 0; i < numskytiles; i++)
+            {
+                int16_t picnum = skytile + dapskyoff[i];
+
+                if (!prartmaps[picnum])
+                    polymer_setupartmap(picnum, pal);
+
+                material->skymap[i] = prartmaps[picnum];
+            }
         }
 
         material->shadeoffset = shade;
@@ -5123,6 +5238,12 @@ static int32_t      polymer_bindmaterial(const _prmaterial *material, const int1
     // PR_BIT_NORMAL_MAP
     if (pr_normalmapping && material->normalmap)
         programbits |= prprogrambits[PR_BIT_NORMAL_MAP].bit;
+
+    // PR_BIT_SKY_MAP
+    if (pr_skymapping && material->skymapcount > 0)
+    {
+        programbits |= prprogrambits[PR_BIT_SKY_MAP].bit;
+    }
 
     // PR_BIT_ART_MAP
     if (pr_artmapping && material->artmap &&
@@ -5279,6 +5400,23 @@ static int32_t      polymer_bindmaterial(const _prmaterial *material, const int1
         }
 
         texunit++;
+    }
+
+    // PR_BIT_SKY_MAP
+    if (programbits & prprogrambits[PR_BIT_SKY_MAP].bit)
+    {
+        for (int i = 0; i < material->skymapcount; i++)
+        {
+            glActiveTexture(texunit + GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, material->skymap[i]);
+
+            glUniform1i(prprograms[programbits].uniform_skyMap[i], texunit);
+
+            texunit++;
+        }
+        glUniform1i(prprograms[programbits].uniform_skyMapCount, material->skymapcount);
+        GLfloat skypan[4] = { 0.125, 0.125, (GLfloat)(globalang / 64.0), (GLfloat)(-globalhoriz / 256.0) };
+        glUniform4fv(prprograms[programbits].uniform_skyPanning, 1, skypan);
     }
 
     // PR_BIT_ART_MAP
@@ -5676,6 +5814,19 @@ static void         polymer_compileprogram(int32_t programbits)
         prprograms[programbits].uniform_eyePosition = glGetUniformLocation(program, "eyePosition");
         prprograms[programbits].uniform_normalMap = glGetUniformLocation(program, "normalMap");
         prprograms[programbits].uniform_normalBias = glGetUniformLocation(program, "normalBias");
+    }
+
+    // PR_BIT_SKY_MAP
+    if (programbits & prprogrambits[PR_BIT_SKY_MAP].bit)
+    {
+        for (int i = 0; i < PSKYOFF_MAX; i++)
+        {
+            char uniformName[12];
+            sprintf(uniformName, "skyMap[%i]", i);
+            prprograms[programbits].uniform_skyMap[i] = glGetUniformLocation(program, uniformName);
+        }
+        prprograms[programbits].uniform_skyPanning = glGetUniformLocation(program, "skyPanning");
+        prprograms[programbits].uniform_skyMapCount = glGetUniformLocation(program, "skyMapCount");
     }
 
     // PR_BIT_ART_MAP
