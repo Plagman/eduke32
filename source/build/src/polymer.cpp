@@ -345,7 +345,12 @@ static const _prprogrambit   prprogrambits[PR_BIT_COUNT] = {
         "\n",
         // frag_prog
 
-        "  float shadeLookup = length(horizDistance) / 1.024 * visibility;\n"
+        "  float shadeLookup;\n"
+        "  if (isSkyMap == 1) {\n"
+        "    shadeLookup = 2.048 * visibility;\n"
+        "  } else {\n"
+        "    shadeLookup = length(horizDistance) / 1.024 * visibility;\n"
+        "  }\n"
         "  shadeLookup = shadeLookup + shadeOffset;\n"
         "\n"
         "  float colorIndex;\n"
