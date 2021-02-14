@@ -2857,7 +2857,7 @@ attributes:
     if ((!s->flags.empty) && (!s->flags.invalidtex) &&
             (floorpicnum == s->floorpicnum_anim) &&
             (ceilingpicnum == s->ceilingpicnum_anim) &&
-            !Bmemcmp(&s->ceilingstat, &sec->ceilingstat, offsetof(sectortype, visibility) - offsetof(sectortype, ceilingstat)))
+            !Bmemcmp(&s->ceilingstat, &sec->ceilingstat, offsetof(sectortype, fogpal) - offsetof(sectortype, ceilingstat)))
         goto finish;
 
 
@@ -2896,7 +2896,7 @@ attributes:
     s->flags.invalidtex = 0;
 
     // copy ceilingstat through visibility members
-    Bmemcpy(&s->ceilingstat, &sec->ceilingstat, offsetof(sectortype, visibility) - offsetof(sectortype, ceilingstat));
+    Bmemcpy(&s->ceilingstat, &sec->ceilingstat, offsetof(sectortype, fogpal) - offsetof(sectortype, ceilingstat));
     s->floorpicnum_anim = floorpicnum;
     s->ceilingpicnum_anim = ceilingpicnum;
 
