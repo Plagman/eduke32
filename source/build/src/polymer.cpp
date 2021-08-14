@@ -321,7 +321,9 @@ static const _prprogrambit   prprogrambits[PR_BIT_COUNT] = {
         "\n",
         // frag_prog
         "  isSkyMap = 1;\n"
-        "  vec2 skyMapCoord = gl_FragCoord.xy * vec2( 1.0, -1.0 ) / (vec2(textureSize(skyMap[0], 0)) * 4.0) + skyPanning.zw;\n"
+        "  vec2 skyMapCoord;\n"
+        "  skyMapCoord.x = gl_FragCoord.x / float(textureSize(skyMap[0], 0).x) / 10.0 + skyPanning.z;\n"
+        "  skyMapCoord.y = -gl_FragCoord.y / float(textureSize(skyMap[0], 0).y) / 6.0 + skyPanning.w;\n"
         "  int skyMapIndex = int(mod(skyMapCoord.x, 16.0));\n"
         "  skyMapSample = texture2D(skyMap[skyMapIndex], skyMapCoord);\n"
         "\n",
@@ -5419,7 +5421,7 @@ static int32_t      polymer_bindmaterial(const _prmaterial *material, const int1
             texunit++;
         }
         glUniform1i(prprograms[programbits].uniform_skyMapCount, material->skymapcount);
-        GLfloat skypan[4] = { 0.125, 0.125, (GLfloat)(globalang / 64.0), (GLfloat)(-globalhoriz / 256.0) };
+        GLfloat skypan[4] = { 0.125, 0.125, (GLfloat)(globalang / 64.0), (GLfloat)(-globalhoriz + 299.0) };
         glUniform4fv(prprograms[programbits].uniform_skyPanning, 1, skypan);
     }
 
